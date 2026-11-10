@@ -1,0 +1,48 @@
+name: Build Cardputer firmware
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio/.cache
+          key: pio-${{ hashFiles('platformio.ini') }}
+
+      - name: Install tools
+        run: pip install platformio "esptool==4.8.1"
+
+      - name: Build
+        run: pio run
+
+      - name: Merge into a single flashable image
+        run: |
+          B=.pio/build/cardputer
+          BOOT=$(find ~/.platformio/packages -name boot_app0.bin | head -1)
+          esptool.py --chip esp32s3 merge_bin \
+            -o cardputer_ragdoll.merged.bin \
+            --flash_mode dio --flash_freq 80m --flash_size 8MB \
+            0x0     $B/bootloader.bin \
+            0x8000  $B/partitions.bin \
+            0xe000  "$BOOT" \
+            0x10000 $B/firmware.bin
+          ls -l cardputer_ragdoll.merged.bin
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cardputer-ragdoll-firmware
+          path: |
+            cardputer_ragdoll.merged.bin
+            .pio/build/cardputer/firmware.bin
